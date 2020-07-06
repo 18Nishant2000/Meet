@@ -8,6 +8,7 @@ import android.database.Cursor;
 import android.os.Build;
 import android.os.Bundle;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.PermissionChecker;
@@ -17,10 +18,21 @@ import android.provider.ContactsContract;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 
 /**
  * A simple {@link Fragment} subclass.
@@ -28,6 +40,9 @@ import java.util.ArrayList;
  * create an instance of this fragment.
  */
 public class Contacts extends Fragment {
+
+    private FirebaseAuth firebaseAuth;
+    private FirebaseFirestore firestore;
 
     // TODO: Rename parameter arguments, choose names that match
     // the fragment initialization parameters, e.g. ARG_ITEM_NUMBER
@@ -76,9 +91,9 @@ public class Contacts extends Fragment {
         // Inflate the layout for this fragment
         View view = inflater.inflate(R.layout.fragment_contacts, container, false);
         ListView listView = view.findViewById(R.id.clist);
-        ArrayList<String> arrayList = new ArrayList<>();
-
-        //getContacts(arrayList);
+        final ArrayList<HashMap<String, String>> arrayList = new ArrayList<>();
+        final ArrayList<String> arrayList1 = new ArrayList<>();
+        final HashMap<String, String> hashMap = new HashMap<>();
 
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
                 ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED){
@@ -98,7 +113,8 @@ public class Contacts extends Fragment {
                                 new String[]{id}, null);
                         while (cursor1.moveToNext()){
                             String phoneNumber = cursor1.getString(cursor1.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER));
-                            arrayList.add(name);
+                            arrayList1.add(name);
+                            hashMap.put(name, phoneNumber);
                         }
                         cursor1.close();
                     }
@@ -107,9 +123,45 @@ public class Contacts extends Fragment {
             cursor.close();
         }
 
-        ArrayAdapter arrayAdapter = new ArrayAdapter(getContext(), android.R.layout.simple_list_item_1, arrayList);
+        ArrayAdapter arrayAdapter = new ArrayAdapter(getContext(), android.R.layout.simple_list_item_1, arrayList1);
         listView.setAdapter(arrayAdapter);
+
+        firebaseAuth = FirebaseAuth.getInstance();
+        firestore = FirebaseFirestore.getInstance();
+
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                final String key = arrayList1.get(position);
+                final String number = hashMap.get(key);
+                final int[] found = {0};
+                firestore.collection("Users").get().addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
+                    @Override
+                    public void onSuccess(QuerySnapshot queryDocumentSnapshots) {
+                        if(!queryDocumentSnapshots.isEmpty()){
+                            ArrayList<DocumentSnapshot> list = (ArrayList<DocumentSnapshot>) queryDocumentSnapshots.getDocuments();
+                            for(DocumentSnapshot d: list){
+                                String num = d.getString("cno");
+                                if(num.equals(number)) {
+                                    startActivity(new Intent(getContext(), messaging.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK).putExtra("name", key));
+                                    found[0] = 1;
+                                }
+                            }
+                            if(found[0] == 0)
+                                Toast.makeText(getContext(), "User didn't exists", Toast.LENGTH_SHORT).show();
+                        }else {
+                            Toast.makeText(getContext(), "No contacts in database", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                }).addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Toast.makeText(getContext(), "Error Occurred", Toast.LENGTH_SHORT).show();
+                    }
+                });
+                //Toast.makeText(getContext(),  number, Toast.LENGTH_SHORT).show();
+            }
+        });
         return view;
     }
-
 }
